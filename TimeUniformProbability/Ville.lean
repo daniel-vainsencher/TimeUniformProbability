@@ -129,15 +129,8 @@ theorem Supermartingale.ville [IsFiniteMeasure μ] [SigmaFiniteFiltration μ �
     (hf : Supermartingale f 𝒢 μ) (hnonneg : 0 ≤ f) {a : ℝ} (ha : 0 < a) :
     μ {ω | ∃ n, a ≤ f n ω} ≤ ENNReal.ofReal (μ[f 0] / a) := by
     let τ : ℕ → Ω → ℕ := fun m ω => hittingBtwn f {x | a ≤ x} 0 m ω
-    have hhit : ∀ m : ℕ, ∀ ω : Ω, τ m ω < m → a ≤ f (τ m ω) ω := by
-      intro m ω hlt
-      exact hittingBtwn_mem_set_of_hittingBtwn_lt hlt
-    have hb : ∀ m : ℕ, μ.real { ω | τ m ω < m} ≤ μ.real { ω | f (τ m ω) ω ≥ a} := by
-      intro m
-      apply measureReal_mono
-      · intro ω hω
-        exact hhit m ω hω
-      · exact measure_ne_top μ _
+    have hb : ∀ m : ℕ, μ.real { ω | τ m ω < m} ≤ μ.real { ω | f (τ m ω) ω ≥ a} := fun m =>
+      measureReal_mono setOf_hittingBtwn_lt_subset_setOf_mem (measure_ne_top μ _)
     have hc : ∀ m : ℕ, a * μ.real { ω | f (τ m ω) ω ≥ a } ≤ ∫ ω, f (τ m ω) ω ∂μ := by
       intro m
       have hint : Integrable (stoppedValue f (fun ω => (τ m ω : ℕ∞))) μ := by
@@ -151,15 +144,13 @@ theorem Supermartingale.ville [IsFiniteMeasure μ] [SigmaFiniteFiltration μ �
       rw [heq]
       exact mul_meas_ge_le_integral_of_nonneg
         (ae_of_all μ (fun ω => hnonneg (τ m ω) ω)) hint a
-    have hd : ∀ m : ℕ, μ[stoppedValue f (fun ω => (τ m ω : ℕ∞))] ≤ μ[f 0] := by
-      intro m
-      have hτ : IsStoppingTime 𝒢 (fun ω => (τ m ω : ℕ∞)) :=
-        hf.stronglyAdapted.adapted.isStoppingTime_hittingBtwn measurableSet_Ici
-      have h0 : IsStoppingTime 𝒢 (fun _ => (0 : ℕ∞)) := isStoppingTime_const 𝒢 0
-      rw [← stoppedValue_const f 0]
-      exact Supermartingale.expected_stoppedValue_mono hf h0 hτ
+    have hd : ∀ m : ℕ, μ[stoppedValue f (fun ω => (τ m ω : ℕ∞))] ≤ μ[f 0] := fun m => by
+      have h := Supermartingale.expected_stoppedValue_mono hf
+        (isStoppingTime_const 𝒢 0)
+        (hf.stronglyAdapted.adapted.isStoppingTime_hittingBtwn measurableSet_Ici)
         (fun ω => zero_le _)
-        (fun ω => mod_cast hittingBtwn_le ω)
+        (fun ω => show (τ m ω : ℕ∞) ≤ (m : ℕ∞) from mod_cast hittingBtwn_le ω)
+      rwa [stoppedValue_const] at h
     -- Per-m bound: μ {τ m ω < m} ≤ ENNReal.ofReal (μ[f 0] / a)
     have hbd : ∀ m : ℕ, μ { ω | τ m ω < m } ≤ ENNReal.ofReal (μ[f 0] / a) := by
       intro m
@@ -175,30 +166,12 @@ theorem Supermartingale.ville [IsFiniteMeasure μ] [SigmaFiniteFiltration μ �
       have key' : μ.real {ω | τ m ω < m} * a ≤ μ[f 0] := by
         linarith [mul_comm a (μ.real {ω | τ m ω < m})]
       exact (le_div_iff₀ ha).mpr key'
-    -- The target set equals the union of {τ m ω < m}
+    -- The target set equals the union of {τ m ω < m} via hittingAfter
     have hset : { ω | ∃ n, a ≤ f n ω } = ⋃ m, { ω | τ m ω < m } := by
-      ext ω
-      simp only [Set.mem_setOf_eq, Set.mem_iUnion]
-      constructor
-      · rintro ⟨n, hn⟩
-        refine ⟨n + 1, ?_⟩
-        change hittingBtwn f {x | a ≤ x} 0 (n + 1) ω < n + 1
-        exact lt_of_le_of_lt
-          (hittingBtwn_le_of_mem (u := f) (s := {x | a ≤ x}) (Nat.zero_le n) (Nat.le_succ n) hn)
-          (Nat.lt_succ_self n)
-      · rintro ⟨m, hm⟩
-        exact ⟨τ m ω, hhit m ω hm⟩
-    -- Monotonicity of the sets
-    have hmono : Monotone (fun m => { ω : Ω | τ m ω < m }) := by
-      intro p q hpq ω hω
-      simp only [Set.mem_setOf_eq] at *
-      -- τ p ω fires before p, so τ q ω ≤ τ p ω < p ≤ q
-      have hmem : f (τ p ω) ω ∈ ({x | a ≤ x} : Set ℝ) :=
-        hittingBtwn_mem_set_of_hittingBtwn_lt hω
-      have hle : τ q ω ≤ τ p ω :=
-        hittingBtwn_le_of_mem (Nat.zero_le _) (hω.le.trans hpq) hmem
-      omega
+      have : { ω | ∃ n, a ≤ f n ω } = {ω | hittingAfter f {x | a ≤ x} 0 ω ≠ ⊤} := by
+        ext ω; simp [hittingAfter_eq_top_iff, not_forall]
+      rw [this, iUnion_hittingBtwn_lt_eq_hittingAfter_ne_top]
     -- Apply continuity of measure from below and bound each term
     rw [hset]
-    apply le_of_tendsto (tendsto_measure_iUnion_atTop hmono)
+    apply le_of_tendsto (tendsto_measure_iUnion_atTop hittingBtwn_lt_self_mono)
     exact Filter.eventually_atTop.mpr ⟨0, fun m _ => hbd m⟩
