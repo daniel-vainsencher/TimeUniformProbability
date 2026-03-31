@@ -50,6 +50,41 @@ open MeasureTheory ProbabilityTheory
 variable {Ω : Type*} {m0 : MeasurableSpace Ω} {μ : Measure Ω}
     {𝒢 : Filtration ℕ m0} {f : ℕ → Ω → ℝ} {τ π : Ω → ℕ∞}
 
+/-! ## Auxiliary lemmas about hitting times -/
+
+/-- On the event that the hitting time fires strictly before the window closes,
+the process is in the target set at the hitting time. -/
+theorem setOf_hittingBtwn_lt_subset_setOf_mem {Ω β : Type*} {u : ℕ → Ω → β} {s : Set β}
+    {m : ℕ} : {ω : Ω | hittingBtwn u s 0 m ω < m} ⊆ {ω | u (hittingBtwn u s 0 m ω) ω ∈ s} :=
+  fun _ hω => hittingBtwn_mem_set_of_hittingBtwn_lt hω
+
+/-- The sets `{ω | hittingBtwn u s 0 m ω < m}` are monotone in `m`: a larger window can only
+reveal more exceedances. -/
+theorem hittingBtwn_lt_self_mono {Ω β : Type*} {u : ℕ → Ω → β} {s : Set β} :
+    Monotone (fun m => {ω : Ω | hittingBtwn u s 0 m ω < m}) := by
+  intro p q hpq ω hω
+  simp only [Set.mem_setOf_eq] at *
+  exact lt_of_le_of_lt
+    (hittingBtwn_le_of_mem (Nat.zero_le _) (hω.le.trans hpq)
+      (hittingBtwn_mem_set_of_hittingBtwn_lt hω))
+    (Nat.lt_of_lt_of_le hω hpq)
+
+/-- The union of `{ω | hittingBtwn u s 0 m ω < m}` over all `m` equals the set where
+`hittingAfter u s 0` is finite, i.e. where `u` ever enters `s`. -/
+theorem iUnion_hittingBtwn_lt_eq_hittingAfter_ne_top {Ω β : Type*}
+    {u : ℕ → Ω → β} {s : Set β} :
+    ⋃ m, {ω : Ω | hittingBtwn u s 0 m ω < m} = {ω | hittingAfter u s 0 ω ≠ ⊤} := by
+  ext ω
+  simp only [Set.mem_iUnion, Set.mem_setOf_eq, ne_eq, hittingAfter_eq_top_iff, not_forall,
+    not_not]
+  constructor
+  · rintro ⟨m, hm⟩
+    exact ⟨hittingBtwn u s 0 m ω, Nat.zero_le _, hittingBtwn_mem_set_of_hittingBtwn_lt hm⟩
+  · rintro ⟨j, -, hj⟩
+    exact ⟨j + 1, lt_of_le_of_lt
+      (hittingBtwn_le_of_mem (Nat.zero_le j) (Nat.le_succ j) hj)
+      (Nat.lt_succ_self j)⟩
+
 /-! ## Step 1: Supermartingale optional stopping -/
 
 -- Belongs in Mathlib/Probability/Process/Stopping.lean alongside `stoppedValue_const`.
