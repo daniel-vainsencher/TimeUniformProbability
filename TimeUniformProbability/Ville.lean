@@ -48,51 +48,9 @@ Step 2 (TODO): Ville's inequality —
 open MeasureTheory ProbabilityTheory
 
 variable {Ω : Type*} {m0 : MeasurableSpace Ω} {μ : Measure Ω}
-    {𝒢 : Filtration ℕ m0} {f : ℕ → Ω → ℝ} {τ π : Ω → ℕ∞}
-
-/-! ## Auxiliary lemmas about hitting times -/
-
-/-- On the event that the hitting time fires strictly before the window closes,
-the process is in the target set at the hitting time. -/
-theorem setOf_hittingBtwn_lt_subset_setOf_mem {Ω β : Type*} {u : ℕ → Ω → β} {s : Set β}
-    {m : ℕ} : {ω : Ω | hittingBtwn u s 0 m ω < m} ⊆ {ω | u (hittingBtwn u s 0 m ω) ω ∈ s} :=
-  fun _ hω => hittingBtwn_mem_set_of_hittingBtwn_lt hω
-
-/-- The sets `{ω | hittingBtwn u s 0 m ω < m}` are monotone in `m`: a larger window can only
-reveal more exceedances. -/
-theorem hittingBtwn_lt_self_mono {Ω β : Type*} {u : ℕ → Ω → β} {s : Set β} :
-    Monotone (fun m => {ω : Ω | hittingBtwn u s 0 m ω < m}) := by
-  intro p q hpq ω hω
-  simp only [Set.mem_setOf_eq] at *
-  exact lt_of_le_of_lt
-    (hittingBtwn_le_of_mem (Nat.zero_le _) (hω.le.trans hpq)
-      (hittingBtwn_mem_set_of_hittingBtwn_lt hω))
-    (Nat.lt_of_lt_of_le hω hpq)
-
-/-- The union of `{ω | hittingBtwn u s 0 m ω < m}` over all `m` equals the set where
-`hittingAfter u s 0` is finite, i.e. where `u` ever enters `s`. -/
-theorem iUnion_hittingBtwn_lt_eq_hittingAfter_ne_top {Ω β : Type*}
-    {u : ℕ → Ω → β} {s : Set β} :
-    ⋃ m, {ω : Ω | hittingBtwn u s 0 m ω < m} = {ω | hittingAfter u s 0 ω ≠ ⊤} := by
-  ext ω
-  simp only [Set.mem_iUnion, Set.mem_setOf_eq, ne_eq, hittingAfter_eq_top_iff, not_forall,
-    not_not]
-  constructor
-  · rintro ⟨m, hm⟩
-    exact ⟨hittingBtwn u s 0 m ω, Nat.zero_le _, hittingBtwn_mem_set_of_hittingBtwn_lt hm⟩
-  · rintro ⟨j, -, hj⟩
-    exact ⟨j + 1, lt_of_le_of_lt
-      (hittingBtwn_le_of_mem (Nat.zero_le j) (Nat.le_succ j) hj)
-      (Nat.lt_succ_self j)⟩
+    {𝒢 : Filtration ℕ m0} {f : ℕ → Ω → ℝ} {τ π : Ω → WithTop ℕ}
 
 /-! ## Step 1: Supermartingale optional stopping -/
-
--- Belongs in Mathlib/Probability/Process/Stopping.lean alongside `stoppedValue_const`.
--- The [Nonempty ι] hypothesis may be droppable.
-@[simp]
-theorem stoppedValue_neg {ι} [Nonempty ι] {β : Type*} [Neg β]
-    (u : ι → Ω → β) (τ : Ω → WithTop ι) :
-    stoppedValue (-u) τ = -stoppedValue u τ := rfl
 
 /-- For a supermartingale `f` and bounded stopping times `τ ≤ π`, the expectation of
 `stoppedValue f` is *decreasing*: `E[f stopped at π] ≤ E[f stopped at τ]`.
@@ -129,28 +87,37 @@ theorem Supermartingale.ville [IsFiniteMeasure μ] [SigmaFiniteFiltration μ �
     (hf : Supermartingale f 𝒢 μ) (hnonneg : 0 ≤ f) {a : ℝ} (ha : 0 < a) :
     μ {ω | ∃ n, a ≤ f n ω} ≤ ENNReal.ofReal (μ[f 0] / a) := by
     let τ : ℕ → Ω → ℕ := fun m ω => hittingBtwn f {x | a ≤ x} 0 m ω
-    have hb : ∀ m : ℕ, μ.real { ω | τ m ω < m} ≤ μ.real { ω | f (τ m ω) ω ≥ a} := fun m =>
-      measureReal_mono setOf_hittingBtwn_lt_subset_setOf_mem (measure_ne_top μ _)
+    have hhit : ∀ m : ℕ, ∀ ω : Ω, τ m ω < m → a ≤ f (τ m ω) ω := by
+      intro m ω hlt
+      exact hittingBtwn_mem_set_of_hittingBtwn_lt hlt
+    have hb : ∀ m : ℕ, μ.real { ω | τ m ω < m} ≤ μ.real { ω | f (τ m ω) ω ≥ a} := by
+      intro m
+      apply measureReal_mono
+      · intro ω hω
+        exact hhit m ω hω
+      · exact measure_ne_top μ _
     have hc : ∀ m : ℕ, a * μ.real { ω | f (τ m ω) ω ≥ a } ≤ ∫ ω, f (τ m ω) ω ∂μ := by
       intro m
-      have hint : Integrable (stoppedValue f (fun ω => (τ m ω : ℕ∞))) μ := by
+      have hint : Integrable (stoppedValue f (fun ω => (τ m ω : WithTop ℕ))) μ := by
         have h := hf.neg.integrable_stoppedValue
           (hf.stronglyAdapted.adapted.isStoppingTime_hittingBtwn measurableSet_Ici)
-          (fun ω => show (τ m ω : ℕ∞) ≤ (m : ℕ∞) from mod_cast hittingBtwn_le ω)
-        have h' : Integrable (-stoppedValue f (fun ω => (τ m ω : ℕ∞))) μ := by
-          convert h using 2
+          (fun ω => show (τ m ω : WithTop ℕ) ≤ (m : WithTop ℕ) from mod_cast hittingBtwn_le ω)
+        have h' : Integrable (-stoppedValue f (fun ω => (τ m ω : WithTop ℕ))) μ := by
+          exact h
         simpa using h'.neg
-      have heq : (fun ω => f (τ m ω) ω) = stoppedValue f (fun ω => (τ m ω : ℕ∞)) := rfl
+      have heq : (fun ω => f (τ m ω) ω) = stoppedValue f (fun ω => (τ m ω : WithTop ℕ)) := rfl
       rw [heq]
       exact mul_meas_ge_le_integral_of_nonneg
         (ae_of_all μ (fun ω => hnonneg (τ m ω) ω)) hint a
-    have hd : ∀ m : ℕ, μ[stoppedValue f (fun ω => (τ m ω : ℕ∞))] ≤ μ[f 0] := fun m => by
-      have h := Supermartingale.expected_stoppedValue_mono hf
-        (isStoppingTime_const 𝒢 0)
-        (hf.stronglyAdapted.adapted.isStoppingTime_hittingBtwn measurableSet_Ici)
-        (fun ω => zero_le _)
-        (fun ω => show (τ m ω : ℕ∞) ≤ (m : ℕ∞) from mod_cast hittingBtwn_le ω)
-      rwa [stoppedValue_const] at h
+    have hd : ∀ m : ℕ, μ[stoppedValue f (fun ω => (τ m ω : WithTop ℕ))] ≤ μ[f 0] := by
+      intro m
+      have hτ : IsStoppingTime 𝒢 (fun ω => (τ m ω : WithTop ℕ)) :=
+        hf.stronglyAdapted.adapted.isStoppingTime_hittingBtwn measurableSet_Ici
+      have h0 : IsStoppingTime 𝒢 (fun _ => (0 : WithTop ℕ)) := isStoppingTime_const 𝒢 0
+      rw [← stoppedValue_const f 0]
+      exact Supermartingale.expected_stoppedValue_mono hf h0 hτ
+        (fun ω => by simp)
+        (fun ω => mod_cast hittingBtwn_le ω)
     -- Per-m bound: μ {τ m ω < m} ≤ ENNReal.ofReal (μ[f 0] / a)
     have hbd : ∀ m : ℕ, μ { ω | τ m ω < m } ≤ ENNReal.ofReal (μ[f 0] / a) := by
       intro m
@@ -161,17 +128,35 @@ theorem Supermartingale.ville [IsFiniteMeasure μ] [SigmaFiniteFiltration μ �
             ≤ a * μ.real { ω | f (τ m ω) ω ≥ a } :=
               mul_le_mul_of_nonneg_left (hb m) ha.le
           _ ≤ ∫ ω, f (τ m ω) ω ∂μ := hc m
-          _ = μ[stoppedValue f (fun ω => (τ m ω : ℕ∞))] := rfl
+          _ = μ[stoppedValue f (fun ω => (τ m ω : WithTop ℕ))] := rfl
           _ ≤ μ[f 0] := hd m
       have key' : μ.real {ω | τ m ω < m} * a ≤ μ[f 0] := by
         linarith [mul_comm a (μ.real {ω | τ m ω < m})]
       exact (le_div_iff₀ ha).mpr key'
-    -- The target set equals the union of {τ m ω < m} via hittingAfter
+    -- The target set equals the union of {τ m ω < m}
     have hset : { ω | ∃ n, a ≤ f n ω } = ⋃ m, { ω | τ m ω < m } := by
-      have : { ω | ∃ n, a ≤ f n ω } = {ω | hittingAfter f {x | a ≤ x} 0 ω ≠ ⊤} := by
-        ext ω; simp [hittingAfter_eq_top_iff, not_forall]
-      rw [this, iUnion_hittingBtwn_lt_eq_hittingAfter_ne_top]
+      ext ω
+      simp only [Set.mem_ofPred_eq, Set.mem_iUnion]
+      constructor
+      · rintro ⟨n, hn⟩
+        refine ⟨n + 1, ?_⟩
+        change hittingBtwn f {x | a ≤ x} 0 (n + 1) ω < n + 1
+        exact lt_of_le_of_lt
+          (hittingBtwn_le_of_mem (u := f) (s := {x | a ≤ x}) (Nat.zero_le n) (Nat.le_succ n) hn)
+          (Nat.lt_succ_self n)
+      · rintro ⟨m, hm⟩
+        exact ⟨τ m ω, hhit m ω hm⟩
+    -- Monotonicity of the sets
+    have hmono : Monotone (fun m => { ω : Ω | τ m ω < m }) := by
+      intro p q hpq ω hω
+      simp only [Set.mem_ofPred_eq] at *
+      -- τ p ω fires before p, so τ q ω ≤ τ p ω < p ≤ q
+      have hmem : f (τ p ω) ω ∈ ({x | a ≤ x} : Set ℝ) :=
+        hittingBtwn_mem_set_of_hittingBtwn_lt hω
+      have hle : τ q ω ≤ τ p ω :=
+        hittingBtwn_le_of_mem (Nat.zero_le _) (hω.le.trans hpq) hmem
+      omega
     -- Apply continuity of measure from below and bound each term
     rw [hset]
-    apply le_of_tendsto (tendsto_measure_iUnion_atTop hittingBtwn_lt_self_mono)
+    apply le_of_tendsto (tendsto_measure_iUnion_atTop hmono)
     exact Filter.eventually_atTop.mpr ⟨0, fun m _ => hbd m⟩
